@@ -1,0 +1,139 @@
+---
+title: "Practical Machine Learning Project"
+author: "James Bullis"
+date: "5/14/2015"
+output: html_document
+---
+
+This project will evaluate where personal wearable devices can properly detect proper weight-lifting technique.  To  accomplish this, data from serveral accompished weight lifters were collected when performing a proper and several "improper" task with a dumbell.  Sensors from several locations on six subjects measured the x,y,z and pitch, roll, yawm, and acceration.  Sensors were also included on the dumbbell.  The variable of interest for the analysis is the 
+specific execution of the exercise, which was either performed correctly, or with one of four "common mistakes."
+
+A random forest model produced a highly accurate prediction of specific execution, with over 99% accuracy in a validation subset of the data.  Preprocessing the data removed 106 of the 159 variables provided in the original data set, so many of values measured originally would not needed for further prediction. 
+
+
+```{r}
+setwd("~/R/Projects")
+library(caret)
+library(lattice)
+set.seed(1)
+
+## optimizing for multiple cores
+library(doMC)
+registerDoMC(cores=7)
+
+train <-read.csv("pml-training.csv", header=TRUE)
+#summary(train)
+predictors <- as.factor(train$classe)
+table(predictors)
+
+
+
+```
+
+##Preprocessing
+
+Several of the variables had no value for a majority of their entries.  Those variables with over 90% of empty values were removed.  Additionally, some variables not consequential to the analysis, including time-related variavbles, were also removed.
+
+The remaining variables were preprocessed with caret.  First, the variavbles were tested for near zero variance.  None had near zero variance, and so all were used for subsequent analysis.  Next, correlations among the variables were calculated.  None of the remaining variables had a correlation of over 80%, so all were used for future analysis.  Finally the collinearity of remaing variables was tested.  All variables were found to be independent.  
+
+
+```{r}
+# removing those columns where NAs and " " are more than 90%
+total= length(train[,1])
+preprocess.nas <- data.frame()
+for (i in 1:length(train[1,])) {
+  preprocess.nas[i,1] <- names(train)[i]
+  preprocess.nas[i,2]<-length(which(train[,i]==""))/total
+  preprocess.nas[i,3] <- length(which(is.na(train[,i])))/total
+  preprocess.nas[i,4] <- i
+}
+names(preprocess.nas)<-c("name", "empties", "NAs", "index")
+index <-preprocess.nas$index[(preprocess.nas$NAs < .9) & (preprocess.nas$empties < .9)]
+train.scrub <-train[,index]
+#cut out predictor and unneeded columns
+train.scrub <-train.scrub[,c(2, 8:59)]
+
+# preprocessing
+nzv <-nearZeroVar(train.scrub, saveMetrics=TRUE)
+nzv.ind <-nearZeroVar(train.scrub)
+# all predictors pass
+training.filtered <-train.scrub
+
+cor.train <-cor(as.matrix(training.filtered[2:53]))
+levelplot(cor.train)
+train.filtered.cor <-findCorrelation(cor.train, cutoff=.80)
+training.filtered <-training.filtered[,-train.filtered.cor]
+
+#making sure there are no linear combinators
+comboInfo <- findLinearCombos(training.filtered)
+comboInfo$remove
+
+
+```
+
+##Exploratory Data Analysis
+The PCA plot for the first and second components of the data reveal two distinct clusters, but these do not correspond directly with the variable of interest.  The separation likely represents differences in sensors, as the sensors were located on the arm, forearm, belt, and on the dumbell.  Paired plots of the first 10 variables also showed a distinctly clustered apprearance that did not correlate with specific execution.
+
+
+```{r}
+train.svd <- svd(training.filtered)
+u <-train.svd$u
+v <-train.svd$v 
+pc <-prcomp(training.filtered)
+library(ggplot2)
+qplot(x=pc$x[, 1], y=pc$x[, 2], colour=predictors)
+
+#separating by sensor type
+#sensor.index<-names(train.scrub)
+#sensor.index[grepl("belt", names(train.scrub))]="belt"
+#sensor.index[grepl("arm", names(train.scrub))]="arm"
+#sensor.index[grepl("forearm", names(train.scrub))]="forearm"
+#sensor.index[grepl("dumbbell", names(train.scrub))]="dumbbell"
+##may not be needed
+
+training.filtered <- cbind(training.filtered, predictors)
+library(AppliedPredictiveModeling)
+transparentTheme(trans = .4)
+plot.subset <-training.filtered[sample(nrow(training.filtered), 1000),]
+
+# this plot is not too helpful
+featurePlot(x=plot.subset[,1:10], y=plot.subset$predictors, plot="pairs",auto.key = list(columns = 5))
+#featurePlot(x=plot.subset[,10:20], y=plot.subset$predictors, plot="pairs",auto.key = list(columns = 5))
+#featurePlot(x=plot.subset[,20:30], y=plot.subset$predictors, plot="pairs",auto.key = list(columns = 5))
+#featurePlot(x=plot.subset[,30:40], y=plot.subset$predictors, plot="pairs",auto.key = list(columns = 5))
+
+
+```
+
+## Model creation
+A random forest model was created using the caret package using the preprocess data above.  Seventy percent of the data was used for training, while thirty percent was used to valide the model.
+
+
+```{r}
+inTrain <-createDataPartition(predictors, p=0.7, list=F)
+training.final <-training.filtered[inTrain,]
+valid.final <-training.filtered[-inTrain,]
+
+modFit <-train(predictors ~ ., method="rf", data=training.final)
+modFit
+
+```
+
+
+#Model validation
+
+Out of sampling error was tested with the validation set of the data.  The results show a highly accurate model, with sensitivity and selectivity both over 0.98 for all classes of the specific execution of the exercise.  OVerall accuracy was 0.9932, while the Kappa was 0.9914.  For class A, the "correct" specific execution, accuracy sensitivty was 0.9994, while specifity was .9974.  The least specific class was B, but this class still had a specificty of 0.9877.
+
+```{r}
+
+preds <-predict(modFit, newdata=valid.final)
+confusionMatrix(preds, valid.final$predictors)
+
+```
+
+
+
+
+
+
+
