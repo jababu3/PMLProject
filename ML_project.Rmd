@@ -22,7 +22,6 @@ library(doMC)
 registerDoMC(cores=7)
 
 train <-read.csv("pml-training.csv", header=TRUE)
-#summary(train)
 predictors <- as.factor(train$classe)
 table(predictors)
 
@@ -83,25 +82,13 @@ pc <-prcomp(training.filtered)
 library(ggplot2)
 qplot(x=pc$x[, 1], y=pc$x[, 2], colour=predictors)
 
-#separating by sensor type
-#sensor.index<-names(train.scrub)
-#sensor.index[grepl("belt", names(train.scrub))]="belt"
-#sensor.index[grepl("arm", names(train.scrub))]="arm"
-#sensor.index[grepl("forearm", names(train.scrub))]="forearm"
-#sensor.index[grepl("dumbbell", names(train.scrub))]="dumbbell"
-##may not be needed
 
 training.filtered <- cbind(training.filtered, predictors)
 library(AppliedPredictiveModeling)
 transparentTheme(trans = .4)
 plot.subset <-training.filtered[sample(nrow(training.filtered), 1000),]
 
-# this plot is not too helpful
 featurePlot(x=plot.subset[,1:10], y=plot.subset$predictors, plot="pairs",auto.key = list(columns = 5))
-#featurePlot(x=plot.subset[,10:20], y=plot.subset$predictors, plot="pairs",auto.key = list(columns = 5))
-#featurePlot(x=plot.subset[,20:30], y=plot.subset$predictors, plot="pairs",auto.key = list(columns = 5))
-#featurePlot(x=plot.subset[,30:40], y=plot.subset$predictors, plot="pairs",auto.key = list(columns = 5))
-
 
 ```
 
